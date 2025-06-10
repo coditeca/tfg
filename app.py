@@ -86,45 +86,24 @@ vista = st.sidebar.radio("¿Qué deseas ver?", [
 if vista == "Tablas comparativas del equipo":
     st.header("Tablas comparativas - Estadísticas globales del equipo")
 
-    # Minutos totales por jugador
-    tabla_minutos = minutos.groupby(["jugador_id", "jugador"]).agg({"minutos":"sum"}).reset_index().sort_values("minutos", ascending=False)
-    tabla_minutos = tabla_minutos.merge(jugadores[["id", "dorsal", "demarcacion"]], left_on="jugador_id", right_on="id", how="left")
-    tabla_minutos = tabla_minutos[["jugador", "dorsal", "demarcacion", "minutos"]]
+    # Agrega todos los jugadores aunque no tengan registros en minutos/acciones/asistencias
+    tabla_minutos = minutos.groupby(["jugador_id"]).agg({"minutos":"sum"}).reset_index()
+    tabla_goles = acciones[acciones["accion"] == "gol"].groupby("jugador_id").size().reset_index(name="goles")
+    tabla_asis = asistencias.groupby("asistente_id").size().reset_index(name="asistencias")
+    tabla_ama = acciones[acciones["accion"] == "amarilla"].groupby("jugador_id").size().reset_index(name="amarillas")
+    tabla_les = acciones[acciones["accion"] == "lesion"].groupby("jugador_id").size().reset_index(name="lesiones")
 
-    st.subheader("Minutos totales jugados por jugador (Temporada)")
-    st.dataframe(tabla_minutos, hide_index=True)
-
-    # Goles, asistencias, amonestaciones, lesiones
-    tabla_goles = acciones[acciones["accion"] == "gol"].groupby(["jugador_id", "jugador"]).size().reset_index(name="goles")
-    tabla_asis = asistencias.groupby(["asistente_id", "asistente"]).size().reset_index(name="asistencias")
-    tabla_ama = acciones[acciones["accion"] == "amarilla"].groupby(["jugador_id", "jugador"]).size().reset_index(name="amarillas")
-    tabla_les = acciones[acciones["accion"] == "lesion"].groupby(["jugador_id", "jugador"]).size().reset_index(name="lesiones")
-
-    # Construye tabla resumen
+    # Siempre merge desde jugadores
     resumen = jugadores[["id", "nombre", "dorsal", "demarcacion"]].copy()
-    # Minutos
-    resumen = resumen.merge(tabla_minutos[["jugador", "minutos"]], left_on="nombre", right_on="jugador", how="left")
-    resumen.drop(columns=["jugador"], inplace=True)
-    # Goles
-    resumen = resumen.merge(tabla_goles[["jugador", "goles"]], left_on="nombre", right_on="jugador", how="left")
-    resumen.drop(columns=["jugador"], inplace=True)
-    # Asistencias
-    resumen = resumen.merge(tabla_asis[["asistente", "asistencias"]], left_on="nombre", right_on="asistente", how="left")
-    resumen.drop(columns=["asistente"], inplace=True)
-    # Amarillas
-    resumen = resumen.merge(tabla_ama[["jugador", "amarillas"]], left_on="nombre", right_on="jugador", how="left", suffixes=('', '_ama'))
-    resumen.drop(columns=["jugador"], inplace=True)
-    # Lesiones
-    resumen = resumen.merge(tabla_les[["jugador", "lesiones"]], left_on="nombre", right_on="jugador", how="left", suffixes=('', '_les'))
-    resumen.drop(columns=["jugador"], inplace=True)
+    resumen = resumen.merge(tabla_minutos, left_on="id", right_on="jugador_id", how="left")
+    resumen = resumen.merge(tabla_goles, left_on="id", right_on="jugador_id", how="left")
+    resumen = resumen.merge(tabla_asis, left_on="id", right_on="asistente_id", how="left")
+    resumen = resumen.merge(tabla_ama, left_on="id", right_on="jugador_id", how="left", suffixes=('', '_ama'))
+    resumen = resumen.merge(tabla_les, left_on="id", right_on="jugador_id", how="left", suffixes=('', '_les'))
     resumen = resumen.fillna(0)
 
-    # Asegúrate de que todas las columnas existen
-    for col in ["minutos", "goles", "asistencias", "amarillas", "lesiones"]:
-        if col not in resumen.columns:
-            resumen[col] = 0
-
     tabla_completa = resumen[["nombre", "dorsal", "demarcacion", "minutos", "goles", "asistencias", "amarillas", "lesiones"]]
+    tabla_completa = tabla_completa.astype({"minutos": int, "goles": int, "asistencias": int, "amarillas": int, "lesiones": int})
     tabla_completa = tabla_completa.sort_values("minutos", ascending=False)
     st.subheader("Tabla comparativa de estadísticas globales")
     st.dataframe(tabla_completa, hide_index=True)
@@ -136,20 +115,21 @@ if vista == "Tablas comparativas del equipo":
     partido_sel = st.selectbox("Selecciona un partido para ver tabla comparativa", partidos_lista)
 
     id_partido = partidos[partidos["fecha"].astype(str) == partido_sel]["id"].values[0]
-    min_part = minutos[minutos["partido_id"] == id_partido].groupby("jugador")["minutos"].sum().reset_index()
-    goles_part = acciones[(acciones["partido_id"] == id_partido) & (acciones["accion"] == "gol")].groupby("jugador").size().reset_index(name="goles")
-    asis_part = asistencias[asistencias["partido_id"] == id_partido].groupby("asistente").size().reset_index(name="asistencias")
-    ama_part = acciones[(acciones["partido_id"] == id_partido) & (acciones["accion"] == "amarilla")].groupby("jugador").size().reset_index(name="amarillas")
-    les_part = acciones[(acciones["partido_id"] == id_partido) & (acciones["accion"] == "lesion")].groupby("jugador").size().reset_index(name="lesiones")
+    min_part = minutos[minutos["partido_id"] == id_partido].groupby("jugador_id")["minutos"].sum().reset_index()
+    goles_part = acciones[(acciones["partido_id"] == id_partido) & (acciones["accion"] == "gol")].groupby("jugador_id").size().reset_index(name="goles")
+    asis_part = asistencias[asistencias["partido_id"] == id_partido].groupby("asistente_id").size().reset_index(name="asistencias")
+    ama_part = acciones[(acciones["partido_id"] == id_partido) & (acciones["accion"] == "amarilla")].groupby("jugador_id").size().reset_index(name="amarillas")
+    les_part = acciones[(acciones["partido_id"] == id_partido) & (acciones["accion"] == "lesion")].groupby("jugador_id").size().reset_index(name="lesiones")
 
-    tabla_partido = jugadores[["nombre", "dorsal", "demarcacion"]].copy()
-    tabla_partido = tabla_partido.merge(min_part, left_on="nombre", right_on="jugador", how="left")
-    tabla_partido = tabla_partido.merge(goles_part, left_on="nombre", right_on="jugador", how="left")
-    tabla_partido = tabla_partido.merge(asis_part, left_on="nombre", right_on="asistente", how="left")
-    tabla_partido = tabla_partido.merge(ama_part, left_on="nombre", right_on="jugador", how="left", suffixes=('', '_ama'))
-    tabla_partido = tabla_partido.merge(les_part, left_on="nombre", right_on="jugador", how="left", suffixes=('', '_les'))
+    tabla_partido = jugadores[["id", "nombre", "dorsal", "demarcacion"]].copy()
+    tabla_partido = tabla_partido.merge(min_part, left_on="id", right_on="jugador_id", how="left")
+    tabla_partido = tabla_partido.merge(goles_part, left_on="id", right_on="jugador_id", how="left")
+    tabla_partido = tabla_partido.merge(asis_part, left_on="id", right_on="asistente_id", how="left")
+    tabla_partido = tabla_partido.merge(ama_part, left_on="id", right_on="jugador_id", how="left", suffixes=('', '_ama'))
+    tabla_partido = tabla_partido.merge(les_part, left_on="id", right_on="jugador_id", how="left", suffixes=('', '_les'))
     tabla_partido = tabla_partido.fillna(0)
     tabla_partido = tabla_partido[["nombre", "dorsal", "demarcacion", "minutos", "goles", "asistencias", "amarillas", "lesiones"]]
+    tabla_partido = tabla_partido.astype({"minutos": int, "goles": int, "asistencias": int, "amarillas": int, "lesiones": int})
     st.dataframe(tabla_partido, hide_index=True)
 
 # ------ INFORME INDIVIDUAL ------
@@ -158,13 +138,11 @@ elif vista == "Informe individual por jugador":
     jugador_id = jugadores[jugadores["nombre"] == jugador_sel]["id"].values[0]
     st.header(f"Informe individual de {jugador_sel}")
 
-    # Tabla de minutos jugados por partido
     min_jug = minutos[minutos["jugador_id"] == jugador_id]
     min_por_part = min_jug.groupby("fecha")["minutos"].sum().reset_index()
     st.subheader("Minutos jugados por partido")
     st.dataframe(min_por_part, hide_index=True)
 
-    # Tabla goles, asistencias, amonestaciones, lesiones por partido
     goles_jug = acciones[(acciones["jugador_id"] == jugador_id) & (acciones["accion"] == "gol")].groupby("fecha").size().reset_index(name="goles")
     asist_jug = asistencias[asistencias["asistente_id"] == jugador_id].groupby("fecha").size().reset_index(name="asistencias")
     amos_jug = acciones[(acciones["jugador_id"] == jugador_id) & (acciones["accion"] == "amarilla")].groupby("fecha").size().reset_index(name="amarillas")
@@ -174,10 +152,10 @@ elif vista == "Informe individual por jugador":
                             .merge(asist_jug, on="fecha", how="left") \
                             .merge(amos_jug, on="fecha", how="left") \
                             .merge(les_jug, on="fecha", how="left").fillna(0)
+    tabla_ind = tabla_ind.astype({"minutos": int, "goles": int, "asistencias": int, "amarillas": int, "lesiones": int})
     st.subheader("Tabla comparativa individual por partido")
     st.dataframe(tabla_ind, hide_index=True)
 
-    # Tabla resumen global
     total_min = min_jug["minutos"].sum()
     total_gol = goles_jug["goles"].sum() if not goles_jug.empty else 0
     total_asi = asist_jug["asistencias"].sum() if not asist_jug.empty else 0
@@ -190,7 +168,6 @@ elif vista == "Informe individual por jugador":
         "Total": [total_min, total_gol, total_asi, total_ama, total_les]
     }))
 
-    # Ranking de minutos jugados
     total_min_equipo = minutos.groupby("jugador_id")["minutos"].sum()
     ranking = total_min_equipo.reset_index().merge(jugadores, left_on="jugador_id", right_on="id")
     ranking = ranking.sort_values("minutos", ascending=False)
