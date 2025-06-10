@@ -174,14 +174,15 @@ elif opcion == "Informe individual por jugador":
     st.subheader("Amonestaciones y lesiones por partido")
     st.dataframe(df_graf2[["fecha", "amarillas", "lesiones"]])
 
-    # Control del reparto de minutos
-    st.header("Control de reparto de minutos (Temporada)")
-    total_min_temporada = minutos[minutos["jugador_id"] == jugador_id]["minutos"].sum()
-    total_min_equipo = minutos.groupby("jugador_id")["minutos"].sum()
-    media_equipo = total_min_equipo.mean()
-    st.metric("Minutos jugados por temporada", int(total_min_temporada))
-    st.metric("Media de minutos del equipo", int(media_equipo))
-    st.progress(float(total_min_temporada) / (media_equipo * 2) if media_equipo > 0 else 0)
+# Control del reparto de minutos
+st.header("Control de reparto de minutos (Temporada)")
+total_min_temporada = minutos[minutos["jugador_id"] == jugador_id]["minutos"].sum()
+total_min_equipo = minutos.groupby("jugador_id")["minutos"].sum()
+media_equipo = total_min_equipo.mean()
+st.metric("Minutos jugados por temporada", int(total_min_temporada))
+st.metric("Media de minutos del equipo", int(media_equipo))
+ratio = float(total_min_temporada) / (media_equipo * 2) if media_equipo > 0 else 0
+st.progress(min(ratio, 1.0))
 
     # Ranking de minutos jugados
     st.subheader("Ranking de minutos jugados en la temporada")
