@@ -1,1 +1,1 @@
-/*app python*/
+print("Hola, mundo!")
