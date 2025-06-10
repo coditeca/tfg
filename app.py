@@ -62,6 +62,33 @@ acciones = load_acciones()
 asistencias = load_asistencias()
 convocatorias = load_convocatorias()
 
+# Utilidad: partidos convocados por jugador
+partidos_convocados_jugador = convocatorias.groupby("jugador_id")["partido_id"].apply(set).to_dict()
+
+def filtrar_minutos(jugador_id):
+    if jugador_id in partidos_convocados_jugador:
+        ids_partidos = partidos_convocados_jugador[jugador_id]
+        return minutos[(minutos["jugador_id"] == jugador_id) & (minutos["partido_id"].isin(ids_partidos))]
+    else:
+        return pd.DataFrame(columns=minutos.columns)
+
+def filtrar_acciones(jugador_id, accion_tipo=None):
+    if jugador_id in partidos_convocados_jugador:
+        ids_partidos = partidos_convocados_jugador[jugador_id]
+        df = acciones[(acciones["jugador_id"] == jugador_id) & (acciones["partido_id"].isin(ids_partidos))]
+        if accion_tipo is not None:
+            df = df[df["accion"] == accion_tipo]
+        return df
+    else:
+        return pd.DataFrame(columns=acciones.columns)
+
+def filtrar_asistencias(jugador_id):
+    if jugador_id in partidos_convocados_jugador:
+        ids_partidos = partidos_convocados_jugador[jugador_id]
+        return asistencias[(asistencias["asistente_id"] == jugador_id) & (asistencias["partido_id"].isin(ids_partidos))]
+    else:
+        return pd.DataFrame(columns=asistencias.columns)
+
 st.title("Informes y Estadísticas de Fútbol Base")
 
 vista = st.sidebar.radio("¿Qué deseas ver?", [
@@ -70,23 +97,13 @@ vista = st.sidebar.radio("¿Qué deseas ver?", [
     "Gráficas"
 ])
 
-# Utilidad: partidos convocados por jugador
-partidos_convocados_jugador = convocatorias.groupby("jugador_id")["partido_id"].apply(set).to_dict()
-
 if vista == "Tablas comparativas del equipo":
     st.header("Estadísticas globales (solo jugadores convocados)")
 
     jugadores_convocados = convocatorias["jugador_id"].unique()
-    df_jug = jugadores[jugadores["id"].isin(jugadores_convocados)]
+    df_jug = jugadores[jugadores["id"].isin(jugadores_convocados)].copy()
 
     # Solo partidos en los que el jugador ha sido convocado
-    def filtrar_minutos(jugador_id):
-        if jugador_id in partidos_convocados_jugador:
-            ids_partidos = partidos_convocados_jugador[jugador_id]
-            return minutos[(minutos["jugador_id"] == jugador_id) & (minutos["partido_id"].isin(ids_partidos))]
-        else:
-            return pd.DataFrame(columns=minutos.columns)
-
     minutos_totales = []
     partidos_jugados = []
     for _, row in df_jug.iterrows():
@@ -97,22 +114,6 @@ if vista == "Tablas comparativas del equipo":
     df_jug["partidos_jugados"] = partidos_jugados
 
     # Goles, asistencias, amonestaciones, lesiones solo de partidos convocados
-    def filtrar_acciones(jugador_id, accion_tipo=None):
-        if jugador_id in partidos_convocados_jugador:
-            ids_partidos = partidos_convocados_jugador[jugador_id]
-            df = acciones[(acciones["jugador_id"] == jugador_id) & (acciones["partido_id"].isin(ids_partidos))]
-            if accion_tipo is not None:
-                df = df[df["accion"] == accion_tipo]
-            return df
-        else:
-            return pd.DataFrame(columns=acciones.columns)
-    def filtrar_asistencias(jugador_id):
-        if jugador_id in partidos_convocados_jugador:
-            ids_partidos = partidos_convocados_jugador[jugador_id]
-            return asistencias[(asistencias["asistente_id"] == jugador_id) & (asistencias["partido_id"].isin(ids_partidos))]
-        else:
-            return pd.DataFrame(columns=asistencias.columns)
-
     df_jug["goles"] = df_jug["id"].apply(lambda x: filtrar_acciones(x, "gol").shape[0])
     df_jug["asistencias"] = df_jug["id"].apply(lambda x: filtrar_asistencias(x).shape[0])
     df_jug["amarillas"] = df_jug["id"].apply(lambda x: filtrar_acciones(x, "amarilla").shape[0])
@@ -210,7 +211,7 @@ elif vista == "Gráficas":
     import seaborn as sns
 
     jugadores_convocados = convocatorias["jugador_id"].unique()
-    df_jug = jugadores[jugadores["id"].isin(jugadores_convocados)]
+    df_jug = jugadores[jugadores["id"].isin(jugadores_convocados)].copy()
 
     st.header("Gráficas de estadísticas (solo convocados)")
     graf = st.selectbox("Selecciona gráfica", [
@@ -251,7 +252,9 @@ elif vista == "Gráficas":
         for _, row in df_jug.iterrows():
             mins = filtrar_minutos(row["id"])
             for _, m in mins.iterrows():
-                lista.append({"fecha": partidos[partidos["id"] == m["partido_id"]]["fecha"].iloc[0], "jugador": row["nombre"], "minutos": m["minutos"]})
+                fecha = partidos[partidos["id"] == m["partido_id"]]["fecha"]
+                if not fecha.empty:
+                    lista.append({"fecha": fecha.iloc[0], "jugador": row["nombre"], "minutos": m["minutos"]})
         tabla = pd.DataFrame(lista)
         if not tabla.empty:
             tabla_pivot = tabla.pivot_table(index="fecha", columns="jugador", values="minutos", fill_value=0)
