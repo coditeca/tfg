@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import mysql.connector
 
-# ------ CONFIGURACIÓN ------
 st.set_page_config(page_title="Informes Fútbol Base", layout="wide")
 
 # ------ CONEXIÓN BD ------
@@ -31,7 +30,6 @@ def load_partidos():
 @st.cache_data
 def load_minutos():
     conn = get_connection()
-    # Incluye nombre de jugador y partido para facilitar vistas
     df = pd.read_sql("""
         SELECT pm.partido_id, pm.jugador_id, pm.periodo, pm.minutos, p.fecha, j.nombre AS jugador
         FROM part_minutos pm
@@ -92,6 +90,7 @@ if vista == "Tablas comparativas del equipo":
     tabla_minutos = minutos.groupby(["jugador_id", "jugador"]).agg({"minutos":"sum"}).reset_index().sort_values("minutos", ascending=False)
     tabla_minutos = tabla_minutos.merge(jugadores[["id", "dorsal", "demarcacion"]], left_on="jugador_id", right_on="id", how="left")
     tabla_minutos = tabla_minutos[["jugador", "dorsal", "demarcacion", "minutos"]]
+
     st.subheader("Minutos totales jugados por jugador (Temporada)")
     st.dataframe(tabla_minutos, hide_index=True)
 
@@ -103,12 +102,27 @@ if vista == "Tablas comparativas del equipo":
 
     # Construye tabla resumen
     resumen = jugadores[["id", "nombre", "dorsal", "demarcacion"]].copy()
-    resumen = resumen.merge(tabla_minutos, left_on="nombre", right_on="jugador", how="left")
-    resumen = resumen.merge(tabla_goles, left_on="id", right_on="jugador_id", how="left")
-    resumen = resumen.merge(tabla_asis, left_on="id", right_on="asistente_id", how="left")
-    resumen = resumen.merge(tabla_ama, left_on="id", right_on="jugador_id", how="left", suffixes=('', '_ama'))
-    resumen = resumen.merge(tabla_les, left_on="id", right_on="jugador_id", how="left", suffixes=('', '_les'))
+    # Minutos
+    resumen = resumen.merge(tabla_minutos[["jugador", "minutos"]], left_on="nombre", right_on="jugador", how="left")
+    resumen.drop(columns=["jugador"], inplace=True)
+    # Goles
+    resumen = resumen.merge(tabla_goles[["jugador", "goles"]], left_on="nombre", right_on="jugador", how="left")
+    resumen.drop(columns=["jugador"], inplace=True)
+    # Asistencias
+    resumen = resumen.merge(tabla_asis[["asistente", "asistencias"]], left_on="nombre", right_on="asistente", how="left")
+    resumen.drop(columns=["asistente"], inplace=True)
+    # Amarillas
+    resumen = resumen.merge(tabla_ama[["jugador", "amarillas"]], left_on="nombre", right_on="jugador", how="left", suffixes=('', '_ama'))
+    resumen.drop(columns=["jugador"], inplace=True)
+    # Lesiones
+    resumen = resumen.merge(tabla_les[["jugador", "lesiones"]], left_on="nombre", right_on="jugador", how="left", suffixes=('', '_les'))
+    resumen.drop(columns=["jugador"], inplace=True)
     resumen = resumen.fillna(0)
+
+    # Asegúrate de que todas las columnas existen
+    for col in ["minutos", "goles", "asistencias", "amarillas", "lesiones"]:
+        if col not in resumen.columns:
+            resumen[col] = 0
 
     tabla_completa = resumen[["nombre", "dorsal", "demarcacion", "minutos", "goles", "asistencias", "amarillas", "lesiones"]]
     tabla_completa = tabla_completa.sort_values("minutos", ascending=False)
@@ -165,10 +179,10 @@ elif vista == "Informe individual por jugador":
 
     # Tabla resumen global
     total_min = min_jug["minutos"].sum()
-    total_gol = goles_jug["goles"].sum()
-    total_asi = asist_jug["asistencias"].sum()
-    total_ama = amos_jug["amarillas"].sum()
-    total_les = les_jug["lesiones"].sum()
+    total_gol = goles_jug["goles"].sum() if not goles_jug.empty else 0
+    total_asi = asist_jug["asistencias"].sum() if not asist_jug.empty else 0
+    total_ama = amos_jug["amarillas"].sum() if not amos_jug.empty else 0
+    total_les = les_jug["lesiones"].sum() if not les_jug.empty else 0
 
     st.markdown("### Resumen global de la temporada")
     st.table(pd.DataFrame({
@@ -218,8 +232,6 @@ elif vista == "Gráficas":
         st.pyplot(fig)
 
     elif graf == "Minutos jugados por partido (jugadores)":
-        partidos_orden = minutos["fecha"].sort_values().unique()
-        jugadores_orden = jugadores["nombre"].tolist()
         tabla = minutos.groupby(["fecha", "jugador"])["minutos"].sum().unstack().fillna(0).astype(int)
         st.dataframe(tabla, hide_index=True)
         fig, ax = plt.subplots(figsize=(12, 6))
